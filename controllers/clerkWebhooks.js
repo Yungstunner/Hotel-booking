@@ -1,57 +1,54 @@
 import { Webhook } from "svix";
-import getRawBody from "raw-body";
-import User from "../../models/User.js";
-import connectDB from "../../utils/connectDB.js"; // Add your DB connect function
+import User from "../models/User.js";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-const handler = async (req, res) => {
-  if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
-
-  await connectDB(); // connect to MongoDB
-
+const clerkWebhooks = async (req, res) => {
   try {
-    const payload = await getRawBody(req);
+    const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
+
     const headers = {
       "svix-id": req.headers["svix-id"],
       "svix-timestamp": req.headers["svix-timestamp"],
       "svix-signature": req.headers["svix-signature"],
     };
 
-    const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
-    const evt = wh.verify(payload, headers);
+    // ✅ Use raw body (req.body is a Buffer due to bodyParser.raw)
+    const evt = wh.verify(req.body, headers);
+
     const { data, type } = evt;
 
     const userData = {
       clerkId: data.id,
-      email: data.email_addresses[0].email_address,
-      username: `${data.first_name} ${data.last_name}`,
+      email: data.email_addresses[0]?.email_address,
+      username: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
       image: data.image_url,
     };
 
     switch (type) {
       case "user.created":
         await User.create(userData);
+        console.log("✅ User created:", userData.email);
         break;
+
       case "user.updated":
         await User.findOneAndUpdate({ clerkId: data.id }, userData);
+        console.log("🔁 User updated:", userData.email);
         break;
+
       case "user.deleted":
         await User.findOneAndDelete({ clerkId: data.id });
+        console.log("🗑️ User deleted:", data.id);
         break;
+
       default:
-        console.log(`Unhandled event type: ${type}`);
+        console.log(`⚠️ Unhandled event type: ${type}`);
+        break;
     }
 
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("Webhook Error:", err.message);
-    return res.status(400).json({ success: false, error: err.message });
+    res.status(200).json({ success: true, message: "Webhook received" });
+  } catch (error) {
+    console.error("❌ Webhook error:", error.message);
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
-export default handler;
+export default clerkWebhooks;
