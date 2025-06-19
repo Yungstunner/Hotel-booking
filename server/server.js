@@ -1,6 +1,7 @@
 import express from "express";
 import "dotenv/config";
 import connectDB from "./config/db.js";
+import bodyParser from "body-parser";
 import { clerkMiddleware } from "@clerk/express";
 
 connectDB();
@@ -9,6 +10,11 @@ import cors from "cors";
 import clerkWebhooks from "./controllers/clerkWebhooks.js";
 
 const app = express();
+app.post(
+  "/api/clerk",
+  bodyParser.raw({ type: "application/json" }),
+  clerkWebhooks
+);
 
 app.use(cors()); //Enable cross-origin resource sharing
 
